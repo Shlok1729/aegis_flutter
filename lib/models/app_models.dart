@@ -8,6 +8,8 @@ class AppPermissionSummary {
   final List<String> permissions;
   final List<String> vulnerabilities;
   final bool isOutdated;
+  final String versionName;
+  final DateTime lastUpdate;
 
   const AppPermissionSummary({
     required this.appName,
@@ -17,6 +19,8 @@ class AppPermissionSummary {
     required this.permissions,
     this.vulnerabilities = const [],
     this.isOutdated = false,
+    this.versionName = 'Unknown',
+    required this.lastUpdate,
   });
 }
 
@@ -46,7 +50,7 @@ class MockData {
     riskyAppsCount: 1,
     backgroundPingsBlocked: 12,
     appsList: [
-      const AppPermissionSummary(
+       AppPermissionSummary(
         appName: 'FlashlightPro',
         packageName: 'com.xyz.flashlight',
         intentCategory: 'Utility',
@@ -56,20 +60,24 @@ class MockData {
           'Intent Gap: Utility app requesting Social data.',
           'Unreachable code: Outdated Ad SDK (CVE-2023-XXXX)'
         ],
+        lastUpdate: DateTime.now().subtract(const Duration(days: 600)), // Over 18 months
+        isOutdated: true,
       ),
-      const AppPermissionSummary(
+       AppPermissionSummary(
         appName: 'SocialConnect',
         packageName: 'com.social.connect',
         intentCategory: 'Social',
         riskLevel: RiskLevel.medium,
         permissions: ['Camera', 'Microphone', 'Location'],
+        lastUpdate: DateTime.now().subtract(const Duration(days: 30)),
       ),
-      const AppPermissionSummary(
+       AppPermissionSummary(
         appName: 'BankSecure',
         packageName: 'com.bank.secure',
         intentCategory: 'Finance',
         riskLevel: RiskLevel.low,
         permissions: ['Location', 'Network'],
+        lastUpdate: DateTime.now().subtract(const Duration(days: 10)),
       ),
     ],
   );

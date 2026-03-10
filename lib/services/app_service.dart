@@ -20,14 +20,21 @@ class AppService {
         }).toList();
 
         final int targetSdkVersion = appMap['targetSdkVersion'] ?? 33;
+        final String versionName = appMap['versionName'] ?? 'Unknown';
+        final int lastUpdateMs = appMap['lastUpdateTime'] ?? 0;
+        final DateTime lastUpdate = DateTime.fromMillisecondsSinceEpoch(lastUpdateMs);
+
         // Android 11 (API 30) introduced mandatory scoped storage and background location limits.
-        // Targeting < 30 means bypassing modern security boundaries.
-        final bool isOutdated = targetSdkVersion < 30;
+        final bool isOutdatedSdkVersion = targetSdkVersion < 30;
+        
+        // Stale App Detection: Over 18 months without an update
+        final bool isStale = DateTime.now().difference(lastUpdate).inDays > (18 * 30);
+        final bool isOutdated = isOutdatedSdkVersion || isStale;
 
         // Basic heuristic for intent & risk level
         String intentCategory = _determineIntent(packageName, permissions);
         RiskLevel riskLevel = _determineRisk(intentCategory, permissions, isOutdated);
-        List<String> vulnerabilities = _detectVulnerabilities(intentCategory, permissions, isOutdated);
+        List<String> vulnerabilities = _detectVulnerabilities(intentCategory, permissions, isOutdated, isStale);
 
         return AppPermissionSummary(
           appName: appName,
@@ -37,6 +44,8 @@ class AppService {
           permissions: permissions,
           vulnerabilities: vulnerabilities,
           isOutdated: isOutdated,
+          versionName: versionName,
+          lastUpdate: lastUpdate,
         );
       }).toList();
     } catch (e) {
@@ -127,10 +136,14 @@ class AppService {
     return RiskLevel.low;
   }
 
-  static List<String> _detectVulnerabilities(String intent, List<String> permissions, bool isOutdated) {
+  static List<String> _detectVulnerabilities(String intent, List<String> permissions, bool isOutdated, bool isStale) {
     List<String> vulns = [];
     if (isOutdated) {
-      vulns.add('Outdated App: Targeting old Android SDK. High risk of unpatched exploits.');
+      if (isStale) {
+        vulns.add('Abandoned App: No updates for over 18 months. High vulnerability risk.');
+      } else {
+        vulns.add('Outdated App: Targeting old Android SDK. High risk of unpatched exploits.');
+      }
     }
     if ((intent == 'Utility' || intent == 'Game' || intent == 'Media') &&
         (permissions.contains('READ_SMS') || permissions.contains('SEND_SMS'))) {

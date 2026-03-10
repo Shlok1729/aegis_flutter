@@ -209,12 +209,22 @@ class MainActivity : FlutterActivity() {
             val appName = packageInfo.applicationInfo?.loadLabel(pm).toString()
             val packageName = packageInfo.packageName
             val targetSdkVersion = packageInfo.applicationInfo?.targetSdkVersion ?: 0
+            val versionName = packageInfo.versionName ?: "Unknown"
+            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                packageInfo.versionCode.toLong()
+            }
+            val lastUpdateTime = packageInfo.lastUpdateTime
             val permissions = packageInfo.requestedPermissions?.toList() ?: emptyList<String>()
 
             val map = mapOf(
                 "appName" to appName,
                 "packageName" to packageName,
                 "targetSdkVersion" to targetSdkVersion,
+                "versionName" to versionName,
+                "versionCode" to versionCode,
+                "lastUpdateTime" to lastUpdateTime,
                 "permissions" to permissions
             )
             appList.add(map)

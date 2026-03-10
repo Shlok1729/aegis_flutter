@@ -27,6 +27,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final apps = await AppService.fetchInstalledApps();
     
     int riskyCount = apps.where((a) => a.riskLevel == RiskLevel.high || a.riskLevel == RiskLevel.critical).length;
+    int outdatedCount = apps.where((a) => a.isOutdated).length;
     
     // Count total dangerous permissions across ALL apps (real metric)
     int totalDangerousPerms = 0;
@@ -34,12 +35,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       totalDangerousPerms += app.permissions.where((p) => AppService.dangerousPermissions.contains(p)).length;
     }
     
-    // Health score: based on ratio of risky apps to total apps
+    // Health score: based on ratio of risky/outdated apps to total apps
     int score;
     if (apps.isEmpty) {
       score = 100;
     } else {
-      double riskyRatio = riskyCount / apps.length;
+      double riskyRatio = (riskyCount + (outdatedCount * 0.5)) / apps.length;
       score = (100 * (1 - riskyRatio * 2)).clamp(0, 100).round();
     }
 
@@ -49,6 +50,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         scannedAppsCount: apps.length,
         riskyAppsCount: riskyCount,
         backgroundPingsBlocked: totalDangerousPerms,
+        outdatedAppsCount: outdatedCount,
         appsList: apps,
       );
       isLoading = false;
@@ -189,6 +191,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildStatsRow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: _buildStatCard('Scanned', state.scannedAppsCount.toString(), Icons.shield_outlined, AppColors.neonBlue)),
+            const SizedBox(width: 12),
+            Expanded(child: _buildStatCard('Risky', state.riskyAppsCount.toString(), Icons.warning_amber_rounded, state.riskyAppsCount > 0 ? AppColors.alertRed : AppColors.safeGreen)),
+            const SizedBox(width: 12),
+            Expanded(child: _buildStatCard('Flagged', state.backgroundPingsBlocked.toString(), Icons.flag_outlined, AppColors.warningYellow)),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _buildVulnerabilitiesReport(),
+      ],
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+      decoration: BoxDecoration(
+        color: AppColors.lightGray,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.05),
+            blurRadius: 10,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 32),
+          const SizedBox(height: 12),
+          Text(value, style: TextStyle(color: color, fontSize: 26, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 4),
+          Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.5), textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVulnerabilitiesReport() {
     // Map of vulnerability text to the number of apps that have it
     final Map<String, int> vulnerabilityCounts = {};
     for (var app in state.appsList) {
@@ -199,7 +247,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
 
-    if (vulnerabilityCounts.isEmpty) {
+    if (vulnerabilityCounts.isEmpty && state.outdatedAppsCount == 0) {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(24),
@@ -225,7 +273,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         const Text('Key Risk Factors Detected', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
-        ...vulnerabilityCounts.entries.take(4).map((entry) {
+        if (state.outdatedAppsCount > 0)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.alertRed.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.alertRed.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.update_disabled, color: AppColors.alertRed, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Security Update Required', style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      Text('${state.outdatedAppsCount} apps are targeting outdated Android security layers.', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ...vulnerabilityCounts.entries.take(3).map((entry) {
           final isHighSeverity = entry.key.contains("SMS") || entry.key.contains("Location") || entry.key.contains("Camera");
           final color = isHighSeverity ? AppColors.alertRed : AppColors.warningYellow;
           final icon = isHighSeverity ? Icons.warning_amber_rounded : Icons.info_outline;
@@ -258,33 +332,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
         }),
       ],
-    );
-  }
-
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
-      decoration: BoxDecoration(
-        color: AppColors.lightGray,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.05),
-            blurRadius: 10,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 32),
-          const SizedBox(height: 12),
-          Text(value, style: TextStyle(color: color, fontSize: 26, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 4),
-          Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.5), textAlign: TextAlign.center),
-        ],
-      ),
     );
   }
 
@@ -336,9 +383,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(app.appName, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              app.appName,
+                              style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (app.isOutdated)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 8.0),
+                              child: Icon(Icons.sync_problem, color: AppColors.alertRed, size: 16),
+                            ),
+                        ],
+                      ),
                       const SizedBox(height: 4),
-                      Text('Intent: ${app.intentCategory}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                      Text('Intent: ${app.intentCategory}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      const SizedBox(height: 2),
+                      Text(
+                        'v${app.versionName} • Updated: ${app.lastUpdate.day}/${app.lastUpdate.month}/${app.lastUpdate.year}',
+                        style: TextStyle(color: AppColors.textSecondary.withOpacity(0.7), fontSize: 11),
+                      ),
                     ],
                   ),
                 ),
@@ -431,7 +498,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.warning_amber_rounded, color: AppColors.alertRed, size: 20),
+                        Icon(
+                          vuln.contains('Abandoned') || vuln.contains('Outdated') 
+                            ? Icons.system_update_alt 
+                            : Icons.warning_amber_rounded,
+                          color: AppColors.alertRed, 
+                          size: 20
+                        ),
                         const SizedBox(width: 10),
                         Expanded(child: Text(vuln, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.4))),
                       ],
@@ -531,6 +604,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 24),
+            if (app.isOutdated) ...[
+              _mitigationTile(
+                icon: Icons.update,
+                color: AppColors.safeGreen,
+                title: 'Update via Play Store',
+                subtitle: 'Install latest version with security patches',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  channel.invokeMethod('openPlayStore', {'packageName': app.packageName});
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
             _mitigationTile(
               icon: Icons.shield_outlined,
               color: AppColors.neonBlue,
