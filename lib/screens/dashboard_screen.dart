@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import '../models/app_models.dart';
 import '../theme/app_theme.dart';
 import 'timeline_screen.dart';
+import 'update_vulnerability_screen.dart';
+import 'temporal_blindness_screen.dart';
+import 'permission_intelligence_screen.dart';
+import 'sdk_vulnerability_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   final DashboardState state = MockData.state;
@@ -24,12 +28,170 @@ class DashboardScreen extends StatelessWidget {
             _buildStatsRow(),
             const SizedBox(height: 24),
             Text(
+              'Security Modules',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            _buildSecurityModulesGrid(context),
+            const SizedBox(height: 24),
+            Text(
               'Installed Apps (Intent-Based Analysis)',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
             ...state.appsList.map((app) => _buildAppItemCard(context, app)),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSecurityModulesGrid(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _buildModuleCard(
+                context,
+                icon: Icons.system_update_alt,
+                title: 'Patch-Diff Scanner',
+                subtitle: 'Outdated apps & CVEs',
+                color: AppColors.alertRed,
+                badgeCount: 4,
+                destination: const UpdateVulnerabilityScreen(),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildModuleCard(
+                context,
+                icon: Icons.visibility_off,
+                title: 'Temporal Blindness',
+                subtitle: 'Shadow sensor access',
+                color: AppColors.warningYellow,
+                badgeCount: 7,
+                destination: const TemporalBlindnessScreen(),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildModuleCard(
+                context,
+                icon: Icons.psychology,
+                title: 'Permission Intel',
+                subtitle: 'Contextual analysis',
+                color: AppColors.neonBlue,
+                badgeCount: 2,
+                destination: const PermissionIntelligenceScreen(),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildModuleCard(
+                context,
+                icon: Icons.extension_off,
+                title: 'SDK Scanner',
+                subtitle: 'Hidden SDK threats',
+                color: const Color(0xFFFF9100),
+                badgeCount: 5,
+                destination: const SDKVulnerabilityScreen(),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModuleCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required int badgeCount,
+    required Widget destination,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => destination),
+        );
+      },
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: color, size: 20),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      badgeCount.toString(),
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Text(
+                    'View →',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
