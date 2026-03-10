@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const Color darkGray = Color(0xFF121212);
-  static const Color lightGray = Color(0xFF2D2D2D);
-  static const Color neonBlue = Color(0xFF00E5FF);
-  static const Color alertRed = Color(0xFFFF1744);
-  static const Color warningYellow = Color(0xFFFFEA00);
-  static const Color safeGreen = Color(0xFF00E676);
-  static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFFA0A0A0);
+static const Color darkGray = Color(0xFFF5F5F5);
+static const Color lightGray = Color(0xFFE0E0E0);
+static const Color neonBlue = Color(0xFF2979FF);
+static const Color alertRed = Color(0xFFE53935);
+static const Color warningYellow = Color(0xFFFFC107);
+static const Color safeGreen = Color(0xFF43A047);
+static const Color textPrimary = Color(0xFF212121);
+static const Color textSecondary = Color(0xFF757575);
 }
 
 class AegisTheme {

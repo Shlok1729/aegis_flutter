@@ -16,6 +16,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DashboardState state = const DashboardState();
   bool isLoading = true;
   final Set<String> _expandedApps = {};
+  String? _activeFilter;
+  String? _activeFilterLabel;
 
   @override
   void initState() {
@@ -76,24 +78,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 16),
                 _buildStatsRow(),
                 const SizedBox(height: 24),
-                Text(
-                  'Installed Apps (Intent-Based Analysis)',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 12),
-                if (state.appsList.isEmpty)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(32.0),
-                      child: Text('No apps found or permission denied.', style: TextStyle(color: AppColors.textSecondary)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _activeFilter == null ? 'Installed Apps (Intent-Based Analysis)' : 'Filtered Apps',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  )
-                else
-                  ...state.appsList.map((app) => _buildAppItemCard(context, app)),
+                    if (_activeFilter != null)
+                      TextButton.icon(
+                        onPressed: () => setState(() {
+                          _activeFilter = null;
+                          _activeFilterLabel = null;
+                        }),
+                        icon: const Icon(Icons.close, size: 16, color: AppColors.alertRed),
+                        label: const Text('Clear Filter', style: TextStyle(color: AppColors.alertRed, fontSize: 13)),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          backgroundColor: AppColors.alertRed.withOpacity(0.1),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        ),
+                      ),
+                  ],
+                ),
+                if (_activeFilterLabel != null) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.neonBlue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.neonBlue.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      'Filtering by: $_activeFilterLabel',
+                      style: const TextStyle(color: AppColors.neonBlue, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                ..._getFilteredApps().map((app) => _buildAppItemCard(context, app)),
               ],
             ),
           ),
     );
+  }
+
+  List<AppPermissionSummary> _getFilteredApps() {
+    if (_activeFilter == null) return state.appsList;
+    
+    return state.appsList.where((app) {
+      if (_activeFilter == 'outdated') return app.isOutdated;
+      return app.vulnerabilities.any((v) => v.contains(_activeFilter!));
+    }).toList();
   }
 
   Widget _buildHealthScoreCard() {
@@ -274,60 +314,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const Text('Key Risk Factors Detected', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         if (state.outdatedAppsCount > 0)
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.alertRed.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.alertRed.withOpacity(0.3)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.update_disabled, color: AppColors.alertRed, size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Security Update Required', style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 2),
-                      Text('${state.outdatedAppsCount} apps are targeting outdated Android security layers.', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                    ],
+          GestureDetector(
+            onTap: () => setState(() {
+              _activeFilter = 'outdated';
+              _activeFilterLabel = 'Security Update Required';
+            }),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: _activeFilter == 'outdated' ? AppColors.alertRed.withOpacity(0.2) : AppColors.alertRed.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.alertRed.withOpacity(_activeFilter == 'outdated' ? 0.8 : 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.update_disabled, color: AppColors.alertRed, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Security Update Required', style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Text('${state.outdatedAppsCount} apps are targeting outdated Android security layers.', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  if (_activeFilter == 'outdated') const Icon(Icons.arrow_downward, color: AppColors.alertRed, size: 16),
+                ],
+              ),
             ),
           ),
         ...vulnerabilityCounts.entries.take(3).map((entry) {
           final isHighSeverity = entry.key.contains("SMS") || entry.key.contains("Location") || entry.key.contains("Camera");
           final color = isHighSeverity ? AppColors.alertRed : AppColors.warningYellow;
           final icon = isHighSeverity ? Icons.warning_amber_rounded : Icons.info_outline;
+          final isSelected = _activeFilter != null && entry.key.contains(_activeFilter!);
 
-          return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.lightGray,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: color.withOpacity(0.3)),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(icon, color: color, size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(entry.key, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.4)),
-                      const SizedBox(height: 4),
-                      Text('Found in ${entry.value} app${entry.value > 1 ? "s" : ""}', style: TextStyle(color: AppColors.textSecondary.withOpacity(0.7), fontSize: 11)),
-                    ],
+          return GestureDetector(
+            onTap: () => setState(() {
+              // Extract a short identifying keyword for the filter
+              _activeFilter = entry.key.split(':').last.trim().split(' ').take(2).join(' ');
+              _activeFilterLabel = entry.key;
+            }),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: isSelected ? color.withOpacity(0.2) : AppColors.lightGray,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: color.withOpacity(isSelected ? 0.8 : 0.3)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(icon, color: color, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(entry.key, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.4)),
+                        const SizedBox(height: 4),
+                        Text('Found in ${entry.value} app${entry.value > 1 ? "s" : ""}', style: TextStyle(color: AppColors.textSecondary.withOpacity(0.7), fontSize: 11)),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  if (isSelected) Icon(Icons.arrow_downward, color: color, size: 16),
+                ],
+              ),
             ),
           );
         }),
