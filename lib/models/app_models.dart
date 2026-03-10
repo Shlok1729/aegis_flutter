@@ -1,5 +1,19 @@
 enum RiskLevel { low, medium, high, critical }
 
+class CveEntry {
+  final String id;
+  final String description;
+  final String severity;
+  final String publishedDate;
+
+  const CveEntry({
+    required this.id,
+    required this.description,
+    required this.severity,
+    required this.publishedDate,
+  });
+}
+
 class AppPermissionSummary {
   final String appName;
   final String packageName;
@@ -10,6 +24,9 @@ class AppPermissionSummary {
   final bool isOutdated;
   final String versionName;
   final DateTime lastUpdate;
+  final bool isIgnored;
+  final int targetSdkVersion;
+  final List<CveEntry> cveMatches;
 
   const AppPermissionSummary({
     required this.appName,
@@ -21,6 +38,9 @@ class AppPermissionSummary {
     this.isOutdated = false,
     this.versionName = 'Unknown',
     required this.lastUpdate,
+    this.isIgnored = false,
+    this.targetSdkVersion = 33,
+    this.cveMatches = const [],
   });
 }
 
@@ -30,6 +50,7 @@ class DashboardState {
   final int riskyAppsCount;
   final int backgroundPingsBlocked;
   final int outdatedAppsCount;
+  final int cveCount;
   final List<AppPermissionSummary> appsList;
 
   const DashboardState({
@@ -38,6 +59,7 @@ class DashboardState {
     this.riskyAppsCount = 0,
     this.backgroundPingsBlocked = 0,
     this.outdatedAppsCount = 0,
+    this.cveCount = 0,
     this.appsList = const [],
   });
 }

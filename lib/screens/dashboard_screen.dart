@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/app_models.dart';
 import '../theme/app_theme.dart';
 import '../services/app_service.dart';
+import '../services/cve_service.dart';
 import 'timeline_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -28,32 +29,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadRealApps() async {
     final apps = await AppService.fetchInstalledApps();
     
-    int riskyCount = apps.where((a) => a.riskLevel == RiskLevel.high || a.riskLevel == RiskLevel.critical).length;
-    int outdatedCount = apps.where((a) => a.isOutdated).length;
+    // Fetch CVE data from NVD (non-blocking — app list loads even if this fails)
+    List<CveEntry> allCves = [];
+    try {
+      allCves = await CveService.fetchAndroidCves();
+    } catch (e) {
+      print('CVE fetch failed in dashboard: $e');
+    }
+    
+    // Match CVEs to each app based on targetSdkVersion
+    final List<AppPermissionSummary> appsWithCves = apps.map((app) {
+      final matched = CveService.matchCvesToApp(app.targetSdkVersion, allCves, intentCategory: app.intentCategory, packageName: app.packageName);
+      if (matched.isEmpty) return app;
+      return AppPermissionSummary(
+        appName: app.appName,
+        packageName: app.packageName,
+        intentCategory: app.intentCategory,
+        riskLevel: app.riskLevel,
+        permissions: app.permissions,
+        vulnerabilities: app.vulnerabilities,
+        isOutdated: app.isOutdated,
+        versionName: app.versionName,
+        lastUpdate: app.lastUpdate,
+        isIgnored: app.isIgnored,
+        targetSdkVersion: app.targetSdkVersion,
+        cveMatches: matched,
+      );
+    }).toList();
+    
+    int riskyCount = appsWithCves.where((a) => !a.isIgnored && (a.riskLevel == RiskLevel.high || a.riskLevel == RiskLevel.critical)).length;
+    int outdatedCount = appsWithCves.where((a) => !a.isIgnored && a.isOutdated).length;
     
     // Count total dangerous permissions across ALL apps (real metric)
     int totalDangerousPerms = 0;
-    for (final app in apps) {
-      totalDangerousPerms += app.permissions.where((p) => AppService.dangerousPermissions.contains(p)).length;
+    int totalCves = 0;
+    for (final app in appsWithCves) {
+      if (!app.isIgnored) {
+        totalDangerousPerms += app.permissions.where((p) => AppService.dangerousPermissions.contains(p)).length;
+        totalCves += app.cveMatches.length;
+      }
     }
     
     // Health score: based on ratio of risky/outdated apps to total apps
     int score;
-    if (apps.isEmpty) {
+    if (appsWithCves.isEmpty) {
       score = 100;
     } else {
-      double riskyRatio = (riskyCount + (outdatedCount * 0.5)) / apps.length;
+      double riskyRatio = (riskyCount + (outdatedCount * 0.5)) / appsWithCves.length;
       score = (100 * (1 - riskyRatio * 2)).clamp(0, 100).round();
     }
 
     setState(() {
       state = DashboardState(
         privacyHealthScore: score,
-        scannedAppsCount: apps.length,
+        scannedAppsCount: appsWithCves.length,
         riskyAppsCount: riskyCount,
         backgroundPingsBlocked: totalDangerousPerms,
         outdatedAppsCount: outdatedCount,
-        appsList: apps,
+        cveCount: totalCves,
+        appsList: appsWithCves,
       );
       isLoading = false;
     });
@@ -63,7 +97,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Project AEGIS'),
+        elevation: 0,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF1A237E), Color(0xFF0D47A1), Color(0xFF1565C0)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.shield, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Project AEGIS',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                Text(
+                  'by CodeCeption',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: () {
+              setState(() { isLoading = true; });
+              _loadRealApps();
+            },
+          ),
+        ],
       ),
       body: isLoading 
         ? const Center(
@@ -131,8 +219,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_activeFilter == null) return state.appsList;
     
     return state.appsList.where((app) {
-      if (_activeFilter == 'outdated') return app.isOutdated;
-      return app.vulnerabilities.any((v) => v.contains(_activeFilter!));
+      if (_activeFilter == 'outdated') return !app.isIgnored && app.isOutdated;
+      if (_activeFilter == 'cve') return !app.isIgnored && app.cveMatches.isNotEmpty;
+      return !app.isIgnored && app.vulnerabilities.any((v) => v.contains(_activeFilter!));
     }).toList();
   }
 
@@ -243,6 +332,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Expanded(child: _buildStatCard('Flagged', state.backgroundPingsBlocked.toString(), Icons.flag_outlined, AppColors.warningYellow)),
           ],
         ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _buildStatCard('Outdated', state.outdatedAppsCount.toString(), Icons.update_disabled, state.outdatedAppsCount > 0 ? AppColors.alertRed : AppColors.safeGreen)),
+            const SizedBox(width: 12),
+            Expanded(child: _buildStatCard('CVEs', state.cveCount.toString(), Icons.bug_report_outlined, state.cveCount > 0 ? AppColors.alertRed : AppColors.safeGreen)),
+            const SizedBox(width: 12),
+            const Expanded(child: SizedBox()),
+          ],
+        ),
         const SizedBox(height: 24),
         _buildVulnerabilitiesReport(),
       ],
@@ -253,21 +352,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
       decoration: BoxDecoration(
-        color: AppColors.lightGray,
+        gradient: LinearGradient(
+          colors: [
+            Colors.white,
+            color.withOpacity(0.12),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: color.withOpacity(0.3), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.05),
-            blurRadius: 10,
-            spreadRadius: 1,
+            color: color.withOpacity(0.1),
+            blurRadius: 12,
+            spreadRadius: 2,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
         children: [
-          Icon(icon, color: color, size: 32),
-          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(height: 10),
           Text(value, style: TextStyle(color: color, fontSize: 26, fontWeight: FontWeight.w900)),
           const SizedBox(height: 4),
           Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.5), textAlign: TextAlign.center),
@@ -280,7 +394,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Map of vulnerability text to the number of apps that have it
     final Map<String, int> vulnerabilityCounts = {};
     for (var app in state.appsList) {
-      if (app.riskLevel != RiskLevel.low) {
+      if (app.riskLevel != RiskLevel.low && !app.isIgnored) {
         for (var v in app.vulnerabilities) {
           vulnerabilityCounts[v] = (vulnerabilityCounts[v] ?? 0) + 1;
         }
@@ -346,6 +460,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
           ),
+        if (state.cveCount > 0)
+          GestureDetector(
+            onTap: () => setState(() {
+              _activeFilter = 'cve';
+              _activeFilterLabel = 'CVE Vulnerabilities Detected';
+            }),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: _activeFilter == 'cve' ? AppColors.alertRed.withOpacity(0.2) : AppColors.alertRed.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.alertRed.withOpacity(_activeFilter == 'cve' ? 0.8 : 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.bug_report, color: AppColors.alertRed, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('CVE Vulnerabilities Detected', style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Text('${state.cveCount} known CVEs affect apps on this device.', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                  if (_activeFilter == 'cve') const Icon(Icons.arrow_downward, color: AppColors.alertRed, size: 16),
+                ],
+              ),
+            ),
+          ),
         ...vulnerabilityCounts.entries.take(3).map((entry) {
           final isHighSeverity = entry.key.contains("SMS") || entry.key.contains("Location") || entry.key.contains("Camera");
           final color = isHighSeverity ? AppColors.alertRed : AppColors.warningYellow;
@@ -402,7 +549,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildAppItemCard(BuildContext context, AppPermissionSummary app) {
-    Color riskColor = _getRiskColor(app.riskLevel);
+    Color riskColor = app.isIgnored ? AppColors.safeGreen : _getRiskColor(app.riskLevel);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -462,6 +609,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         'v${app.versionName} • Updated: ${app.lastUpdate.day}/${app.lastUpdate.month}/${app.lastUpdate.year}',
                         style: TextStyle(color: AppColors.textSecondary.withOpacity(0.7), fontSize: 11),
                       ),
+                      if (app.cveMatches.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors.alertRed.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppColors.alertRed.withOpacity(0.4)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.bug_report, color: AppColors.alertRed, size: 12),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${app.cveMatches.length} CVE${app.cveMatches.length > 1 ? "s" : ""}',
+                                  style: const TextStyle(color: AppColors.alertRed, fontSize: 10, fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -478,7 +648,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Icon(Icons.circle, color: riskColor, size: 8),
                       const SizedBox(width: 6),
                       Text(
-                        app.riskLevel.name.toUpperCase(),
+                        app.isIgnored ? 'APPROVED' : app.riskLevel.name.toUpperCase(),
                         style: TextStyle(color: riskColor, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5),
                       ),
                     ],
@@ -574,8 +744,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 height: 52,
                 child: ElevatedButton.icon(
                   onPressed: () => _showMitigationSheet(context, app),
-                  icon: const Icon(Icons.security, color: AppColors.darkGray),
-                  label: const Text('ONE-TAP MITIGATION', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: AppColors.darkGray, fontSize: 14)),
+                  icon: Icon(app.isIgnored ? Icons.settings : Icons.security, color: AppColors.darkGray),
+                  label: Text(app.isIgnored ? 'MANAGE APP' : 'ONE-TAP MITIGATION', style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: AppColors.darkGray, fontSize: 14)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.safeGreen,
                     elevation: 6,
@@ -673,6 +843,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 12),
             ],
+            _mitigationTile(
+              icon: app.isIgnored ? Icons.restore : Icons.verified_user_outlined,
+              color: app.isIgnored ? AppColors.warningYellow : AppColors.neonBlue,
+              title: app.isIgnored ? 'Revoke Approval' : 'Ignore Warnings',
+              subtitle: app.isIgnored ? 'Restore risk warnings for this app' : 'Mark this app as safe manually',
+              onTap: () async {
+                Navigator.pop(ctx);
+                if (app.isIgnored) {
+                  await AppService.unignoreApp(app.packageName);
+                } else {
+                  await AppService.ignoreApp(app.packageName, app.versionName);
+                }
+                setState(() => isLoading = true);
+                _loadRealApps();
+              },
+            ),
+            const SizedBox(height: 12),
             _mitigationTile(
               icon: Icons.shield_outlined,
               color: AppColors.neonBlue,

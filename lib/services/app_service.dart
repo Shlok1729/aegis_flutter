@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_models.dart';
 
 class AppService {
@@ -6,6 +7,14 @@ class AppService {
 
   static Future<List<AppPermissionSummary>> fetchInstalledApps() async {
     try {
+      // SharedPreferences for ignore list — non-blocking
+      SharedPreferences? prefs;
+      try {
+        prefs = await SharedPreferences.getInstance();
+      } catch (e) {
+        print('SharedPreferences init failed: $e');
+      }
+
       final List<dynamic> result = await _channel.invokeMethod('getInstalledApps');
       
       return result.map((app) {
@@ -35,6 +44,8 @@ class AppService {
         String intentCategory = _determineIntent(packageName, permissions);
         RiskLevel riskLevel = _determineRisk(intentCategory, permissions, isOutdated);
         List<String> vulnerabilities = _detectVulnerabilities(intentCategory, permissions, isOutdated, isStale);
+        
+        final bool isIgnored = prefs != null && prefs.getString('ignore_$packageName') == versionName;
 
         return AppPermissionSummary(
           appName: appName,
@@ -46,6 +57,8 @@ class AppService {
           isOutdated: isOutdated,
           versionName: versionName,
           lastUpdate: lastUpdate,
+          isIgnored: isIgnored,
+          targetSdkVersion: targetSdkVersion,
         );
       }).toList();
     } catch (e) {
@@ -162,5 +175,15 @@ class AppService {
       vulns.add('Reading call logs without clear need — potential data harvesting.');
     }
     return vulns;
+  }
+
+  static Future<void> ignoreApp(String packageName, String versionName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('ignore_$packageName', versionName);
+  }
+
+  static Future<void> unignoreApp(String packageName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('ignore_$packageName');
   }
 }

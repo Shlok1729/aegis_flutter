@@ -235,6 +235,135 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
           ),
           const SizedBox(height: 24),
 
+          // CVE Vulnerabilities Section
+          if (widget.app.cveMatches.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.lightGray,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.alertRed.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.bug_report, color: AppColors.alertRed, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Known CVE Vulnerabilities (${widget.app.cveMatches.length})',
+                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Based on target SDK ${widget.app.targetSdkVersion} • Source: NIST NVD',
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                  ),
+                  const SizedBox(height: 12),
+                  ...widget.app.cveMatches.map((cve) => Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.darkGray,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: cve.severity == 'CRITICAL'
+                            ? AppColors.alertRed.withOpacity(0.4)
+                            : AppColors.warningYellow.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              cve.id,
+                              style: const TextStyle(
+                                color: AppColors.neonBlue,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: cve.severity == 'CRITICAL'
+                                    ? AppColors.alertRed.withOpacity(0.15)
+                                    : AppColors.warningYellow.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                cve.severity,
+                                style: TextStyle(
+                                  color: cve.severity == 'CRITICAL' ? AppColors.alertRed : AppColors.warningYellow,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          cve.publishedDate,
+                          style: TextStyle(color: AppColors.textSecondary.withOpacity(0.7), fontSize: 10),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          cve.description.length > 200
+                              ? '${cve.description.substring(0, 200)}...'
+                              : cve.description,
+                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, height: 1.4),
+                        ),
+                        const SizedBox(height: 10),
+                        // Remediation / Solution box
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.safeGreen.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.safeGreen.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.shield, color: AppColors.safeGreen, size: 16),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Recommended Action',
+                                      style: TextStyle(color: AppColors.safeGreen, fontSize: 11, fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _getCveRemediation(cve, widget.app.targetSdkVersion),
+                                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 11, height: 1.4),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+
           // Heatmap (always shown)
           Container(
             width: double.infinity,
@@ -372,6 +501,63 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
         Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
       ],
     );
+  }
+
+  String _getCveRemediation(CveEntry cve, int targetSdk) {
+    final d = cve.description.toLowerCase();
+
+    // Kernel vulnerability
+    if (d.contains('kernel') || d.contains('linux kernel')) {
+      return '• Go to Settings → System → Software Update and install the latest Android security patch.\n'
+          '• Kernel patches are delivered via monthly security updates from your device manufacturer.';
+    }
+
+    // Remote code execution
+    if (d.contains('remote code execution') || d.contains('rce')) {
+      return '• Update this app to the latest version from Play Store immediately.\n'
+          '• Avoid clicking unknown links or opening untrusted files until patched.\n'
+          '• Check Settings → System → Security Update to ensure your device is up to date.';
+    }
+
+    // Privilege escalation
+    if (d.contains('privilege escalation') || d.contains('escalation of privilege')) {
+      return '• Install the latest Android security patch from Settings → System → Software Update.\n'
+          '• Review this app\'s permissions and revoke any unnecessary ones.\n'
+          '• Avoid sideloading apps from untrusted sources.';
+    }
+
+    // Buffer overflow / memory corruption
+    if (d.contains('buffer overflow') || d.contains('heap') || d.contains('memory corruption') || d.contains('use-after-free')) {
+      return '• Update both the app and Android OS to their latest versions.\n'
+          '• These vulnerabilities are typically fixed in monthly security patches.\n'
+          '• Avoid visiting untrusted websites while unpatched.';
+    }
+
+    // Information disclosure
+    if (d.contains('information disclosure') || d.contains('data leak') || d.contains('sensitive')) {
+      return '• Update this app from the Play Store to get the security fix.\n'
+          '• Review the app\'s data access permissions in Settings → Apps.\n'
+          '• Consider using a VPN for sensitive activities until patched.';
+    }
+
+    // Third-party app specific CVE
+    if (d.contains('before ') && (d.contains('version') || RegExp(r'before \d+\.\d+').hasMatch(d))) {
+      return '• Update this app to the latest version from the Play Store.\n'
+          '• The vulnerability affects older versions and is likely already patched.\n'
+          '• Enable auto-updates: Play Store → Settings → Auto-update apps.';
+    }
+
+    // Outdated SDK general advice
+    if (targetSdk < 33) {
+      return '• This app targets an outdated Android SDK ($targetSdk). Ask the developer to update.\n'
+          '• Consider switching to an alternative app that targets a newer SDK.\n'
+          '• Keep your Android OS updated to mitigate impact.';
+    }
+
+    // General fallback
+    return '• Keep your Android OS and all apps updated to the latest versions.\n'
+        '• Check Settings → System → Software Update for pending security patches.\n'
+        '• Enable auto-updates in the Play Store to stay protected.';
   }
 }
 
