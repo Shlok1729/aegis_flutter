@@ -19,10 +19,15 @@ class AppService {
           return p.replaceFirst('android.permission.', '');
         }).toList();
 
+        final int targetSdkVersion = appMap['targetSdkVersion'] ?? 33;
+        // Android 11 (API 30) introduced mandatory scoped storage and background location limits.
+        // Targeting < 30 means bypassing modern security boundaries.
+        final bool isOutdated = targetSdkVersion < 30;
+
         // Basic heuristic for intent & risk level
         String intentCategory = _determineIntent(packageName, permissions);
-        RiskLevel riskLevel = _determineRisk(intentCategory, permissions);
-        List<String> vulnerabilities = _detectVulnerabilities(intentCategory, permissions);
+        RiskLevel riskLevel = _determineRisk(intentCategory, permissions, isOutdated);
+        List<String> vulnerabilities = _detectVulnerabilities(intentCategory, permissions, isOutdated);
 
         return AppPermissionSummary(
           appName: appName,
@@ -31,6 +36,7 @@ class AppService {
           riskLevel: riskLevel,
           permissions: permissions,
           vulnerabilities: vulnerabilities,
+          isOutdated: isOutdated,
         );
       }).toList();
     } catch (e) {
@@ -86,7 +92,7 @@ class AppService {
     return 'Utility';
   }
 
-  static RiskLevel _determineRisk(String intentCategory, List<String> permissions) {
+  static RiskLevel _determineRisk(String intentCategory, List<String> permissions, bool isOutdated) {
     // Count how many truly dangerous permissions this app requests
     int dangerousCount = permissions.where((p) => dangerousPermissions.contains(p)).length;
 
@@ -117,12 +123,15 @@ class AppService {
 
     if (suspicionScore >= 6) return RiskLevel.critical;
     if (suspicionScore >= 4) return RiskLevel.high;
-    if (suspicionScore >= 2) return RiskLevel.medium;
+    if (suspicionScore >= 2 || isOutdated) return RiskLevel.medium;
     return RiskLevel.low;
   }
 
-  static List<String> _detectVulnerabilities(String intent, List<String> permissions) {
+  static List<String> _detectVulnerabilities(String intent, List<String> permissions, bool isOutdated) {
     List<String> vulns = [];
+    if (isOutdated) {
+      vulns.add('Outdated App: Targeting old Android SDK. High risk of unpatched exploits.');
+    }
     if ((intent == 'Utility' || intent == 'Game' || intent == 'Media') &&
         (permissions.contains('READ_SMS') || permissions.contains('SEND_SMS'))) {
       vulns.add('Intent Mismatch: $intent app can read/send SMS messages.');

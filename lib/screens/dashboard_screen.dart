@@ -189,13 +189,74 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildStatsRow() {
-    return Row(
+    // Map of vulnerability text to the number of apps that have it
+    final Map<String, int> vulnerabilityCounts = {};
+    for (var app in state.appsList) {
+      if (app.riskLevel != RiskLevel.low) {
+        for (var v in app.vulnerabilities) {
+          vulnerabilityCounts[v] = (vulnerabilityCounts[v] ?? 0) + 1;
+        }
+      }
+    }
+
+    if (vulnerabilityCounts.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: AppColors.safeGreen.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.safeGreen.withOpacity(0.3)),
+        ),
+        child: const Column(
+          children: [
+            Icon(Icons.shield_outlined, color: AppColors.safeGreen, size: 48),
+            SizedBox(height: 16),
+            Text('No Critical Risks Found', style: TextStyle(color: AppColors.safeGreen, fontSize: 18, fontWeight: FontWeight.bold)),
+            SizedBox(height: 8),
+            Text('Your device is in a secure state with no severe intent mismatches detected.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13), textAlign: TextAlign.center),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: _buildStatCard('Scanned', state.scannedAppsCount.toString(), Icons.shield_outlined, AppColors.neonBlue)),
-        const SizedBox(width: 12),
-        Expanded(child: _buildStatCard('Risky', state.riskyAppsCount.toString(), Icons.warning_amber_rounded, state.riskyAppsCount > 0 ? AppColors.alertRed : AppColors.safeGreen)),
-        const SizedBox(width: 12),
-        Expanded(child: _buildStatCard('Flagged', state.backgroundPingsBlocked.toString(), Icons.flag_outlined, AppColors.warningYellow)),
+        const Text('Key Risk Factors Detected', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        ...vulnerabilityCounts.entries.take(4).map((entry) {
+          final isHighSeverity = entry.key.contains("SMS") || entry.key.contains("Location") || entry.key.contains("Camera");
+          final color = isHighSeverity ? AppColors.alertRed : AppColors.warningYellow;
+          final icon = isHighSeverity ? Icons.warning_amber_rounded : Icons.info_outline;
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.lightGray,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withOpacity(0.3)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(entry.key, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.4)),
+                      const SizedBox(height: 4),
+                      Text('Found in ${entry.value} app${entry.value > 1 ? "s" : ""}', style: TextStyle(color: AppColors.textSecondary.withOpacity(0.7), fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
       ],
     );
   }

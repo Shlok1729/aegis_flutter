@@ -71,6 +71,24 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_ARG", "packageName required", null)
                     }
                 }
+                "openPlayStore" -> {
+                    val pkg = call.argument<String>("packageName")
+                    if (pkg != null) {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=$pkg"))
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: android.content.ActivityNotFoundException) {
+                            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/apps/details?id=$pkg"))
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            result.success(true)
+                        }
+                    } else {
+                        result.error("INVALID_ARG", "packageName required", null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -190,11 +208,13 @@ class MainActivity : FlutterActivity() {
 
             val appName = packageInfo.applicationInfo?.loadLabel(pm).toString()
             val packageName = packageInfo.packageName
+            val targetSdkVersion = packageInfo.applicationInfo?.targetSdkVersion ?: 0
             val permissions = packageInfo.requestedPermissions?.toList() ?: emptyList<String>()
 
             val map = mapOf(
                 "appName" to appName,
                 "packageName" to packageName,
+                "targetSdkVersion" to targetSdkVersion,
                 "permissions" to permissions
             )
             appList.add(map)

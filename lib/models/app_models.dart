@@ -7,6 +7,7 @@ class AppPermissionSummary {
   final RiskLevel riskLevel;
   final List<String> permissions;
   final List<String> vulnerabilities;
+  final bool isOutdated;
 
   const AppPermissionSummary({
     required this.appName,
@@ -15,6 +16,7 @@ class AppPermissionSummary {
     required this.riskLevel,
     required this.permissions,
     this.vulnerabilities = const [],
+    this.isOutdated = false,
   });
 }
 
@@ -23,6 +25,7 @@ class DashboardState {
   final int scannedAppsCount;
   final int riskyAppsCount;
   final int backgroundPingsBlocked;
+  final int outdatedAppsCount;
   final List<AppPermissionSummary> appsList;
 
   const DashboardState({
@@ -30,6 +33,7 @@ class DashboardState {
     this.scannedAppsCount = 0,
     this.riskyAppsCount = 0,
     this.backgroundPingsBlocked = 0,
+    this.outdatedAppsCount = 0,
     this.appsList = const [],
   });
 }
